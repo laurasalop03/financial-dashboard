@@ -107,3 +107,10 @@ def calculate_risk_stats(asset_returns: pd.Series, benchmark_returns: pd.Series)
         "mu": mu,
         "std": std
     }
+
+
+def calculate_correlation(df: pd.DataFrame):
+    """
+    Calculates de correlation matrix for the assets we have.
+    """
+    return df['log_return'].corr()

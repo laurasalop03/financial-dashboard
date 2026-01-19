@@ -97,7 +97,9 @@ if option == "General Summary":
         high=df['High', selected_ticker], 
         low=df['Low', selected_ticker], 
         close=df['Close', selected_ticker],
-        name=selected_ticker
+        name=selected_ticker,
+        increasing_line_color=COLOR_PALETTE["success"], 
+        decreasing_line_color=COLOR_PALETTE["danger"]
     ))
 
     # calculate busy days between start and end date
@@ -269,6 +271,30 @@ if option == "Risk & Statistics":
         )
         
         st.plotly_chart(fig_hist, use_container_width=True)
+
+
+        # heatmap for correlation matrix
+        corr_matrix = logic.calculate_correlation(df)
+        fig_heatmap = go.Figure()
+        fig_heatmap.add_trace(go.Heatmap(
+            z=corr_matrix, 
+            x=corr_matrix.columns, 
+            y=corr_matrix.index,
+            texttemplate="%{z:.2f}",
+            colorscale=[
+                [0.0, COLOR_PALETTE["danger"]],
+                [0.5, "white"],                 
+                [1.0, COLOR_PALETTE["primary"]]
+            ],
+            zmin=-1, 
+            zmax=1
+        ))
+        fig_heatmap.update_layout(
+            title='Correlation Matrix Heatmap',
+            height=600 
+        )
+        st.plotly_chart(fig_heatmap, use_container_width=True)
+
 
     else:
         st.error("Error performing risk analysis.")
