@@ -1,122 +1,104 @@
-import yfinance as yf
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import norm, linregress
-import plotly.express as px
 import plotly.graph_objects as go
+from scipy.stats import norm
+import logic
 
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Financial Dashboard")
 
 st.title("Financial Data Analysis Dashboard")
 
 
-# streatmlit caching to avoid re-downloading data on every run
-@st.cache_data
-def get_data(ticker='AAPL', start='2020-01-01', end='2023-12-31'):
-
-    # get info from ticker
-    df = yf.download(ticker, start=start, end=end, auto_adjust=True)
-
-    # calculate returns
-    df['simple_return'] = df['Close'].pct_change()
-    df['log_return'] = np.log(df['Close'] / df['Close'].shift(1))
-    df.dropna(inplace=True)
-
-    # calculate annualized volatility
-    df['volatility'] = df['log_return'].std() * np.sqrt(252)
-
-    # VaR
-    confidence_level = 0.95
-    df['VaR_95'] = norm.ppf(1 - confidence_level) * df['volatility'].iloc[-1]
-
-    
-    # get info from S&P 500
-    df2 = yf.download('^GSPC', start=start, end=end, auto_adjust=True)
-
-    # calculate S&P 500 returns
-    df2['log_return_sp500'] = np.log(df2['Close'] / df2['Close'].shift(1))
-    df2.dropna(inplace=True)
-
-    # clean dataframe for merging
-    df_sp500_clean = df2[['log_return_sp500']] # dual [] to keep as DataFrame
-
-    # merge both dataframes
-    df_total = df.join(df_sp500_clean, how='inner') 
-
-    # linear regression to find alpha and beta
-    beta, alpha, r_value, p_value, std_err = linregress(x=df_total['log_return_sp500'], y=df_total['log_return'])
-    df_total['alpha_anualized'] = alpha * 252
-    df_total['beta'] = beta
-
-    # Drawdown calculation
-    df_total['Rolling_Max'] = df_total['Close'].cummax()
-    close_series = df_total[('Close', ticker)]
-    max_series = df_total[('Rolling_Max', '')]
-    df_total['Drawdown'] = (close_series - max_series) / max_series
-    df_total['max_drawdown'] = df_total['Drawdown'].min()
-
-    # SMA 50 and 200
-    df_total['SMA_50'] = df_total['Close', ticker].rolling(window=50).mean()
-    df_total['SMA_200'] = df_total['Close', ticker].rolling(window=200).mean()
-
-    return df_total
-
-
+# --- SIDEBAR ---
 
 # ask user for ticker symbol, start date, end date
-ticker = st.sidebar.text_input("Enter Ticker Symbol", value="AAPL")
-start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2020-01-01"))
+
+posible_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'SPY', 'META', 'NVDA']
+tickers = st.sidebar.multiselect("Select Tickers", options=posible_tickers, default=["AAPL"])
+start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
 end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2025-12-31"))
 
 
-
 st.sidebar.markdown("---") 
-option = st.sidebar.radio("Navegation", [ticker + "'s Summary", "Technical Analysis", "Risk & Statistics"])
+option = st.sidebar.radio("Navegation", ["General Summary", "Technical Analysis", "Risk & Statistics"])
 
+
+# Validation
+if not tickers:
+    st.warning("Please select at least one ticker.")
+    st.stop()
 
 # Load data
-df = get_data(ticker=ticker, start=start_date, end=end_date)
+try:
+    df = logic.get_data(tickers, start=start_date, end=end_date)
+except Exception as e:
+    st.error(f"Error loading data: {e}")
+    st.stop()
 
 
-if option == ticker + "'s Summary":
-    st.header(ticker + "'s Financial Summary")
+# --- GENERAL SUMARY ---
 
-    st.write(f"Displaying data for **{ticker}** from **{start_date}** to **{end_date}**.")
+if option == "General Summary":
 
-    st.dataframe(df.tail())
+    st.header("Financial Summary & Comparison")
 
-    st.markdown("### Key Metrics")
-    col1, col2, col3 = st.columns(3)
+    # METRICS
+    st.subheader("Market Overview")
 
-    total_return_acc = (df['Close', ticker].iloc[-1] - df['Close', ticker].iloc[0]) / df['Close', ticker].iloc[0]
-    col1.metric("Total Return", f"{total_return_acc:.2%}")
+    metrics_list = [logic.calculate_metrics(df, t) for t in tickers]
+    st.dataframe(pd.DataFrame(metrics_list))
 
-    annualized_volatility = df['volatility'].iloc[-1]
-    col2.metric("Annualized Volatility", f"{annualized_volatility:.2%}")
 
-    max_drawdown = df['max_drawdown'].iloc[-1]
-    col3.metric("Max Drawdown", f"{max_drawdown:.2%}")
+    # GRAPHS
+    st.markdown("### Price Comparison")
+
+    # time series plot of closing prices
+    fig_closing = go.Figure()
+
+    for t in tickers:
+        prices = df['Close', t]
+        normalized_prices = (prices / prices.iloc[0]) * 100
+        fig_closing.add_trace(go.Scatter(
+            x=df.index, 
+            y=normalized_prices,
+            mode='lines',
+            name=t
+        ))
+    fig_closing.update_layout(
+        title='Relative Performance (Base 100)',
+        xaxis_title='Date', 
+        yaxis_title='Growth (Base 100)',
+        hovermode='x unified',
+        xaxis_rangeslider_visible=True,
+    )
+    st.plotly_chart(fig_closing, use_container_width=True)
+
+    st.markdown("---")
+
+    # candlestick plot doesn't make sense for multiple tickers, so only for the choosen one
+    st.subheader("Candlestick Chart")
+
+    selected_ticker = st.selectbox("Select asset to inspect:", options=tickers, key="summary_select")
+
+    fig_candlestick = go.Figure()
+    fig_candlestick.add_trace(go.Candlestick(
+        x=df.index, 
+        open=df['Open', selected_ticker], 
+        high=df['High', selected_ticker], 
+        low=df['Low', selected_ticker], 
+        close=df['Close', selected_ticker],
+        name=selected_ticker
+    ))
 
     # calculate busy days between start and end date
     dt_all = pd.bdate_range(start=df.index[0], end=df.index[-1])
     dt_obs = df.index
     dt_breaks = dt_all.difference(dt_obs)
 
-    # time series plot of closing prices
-    fig_closing = go.Figure()
-    fig_closing.add_trace(go.Candlestick(
-        x=df.index, 
-        open=df['Open', ticker], 
-        high=df['High', ticker], 
-        low=df['Low', ticker], 
-        close=df['Close', ticker],
-        name='Candlestick'
-    ))
-    fig_closing.update_layout(
-        title=f"{ticker} Daily Prices (Candlestick)",
+    fig_candlestick.update_layout(
+        title=f"{selected_ticker} Daily Prices (Candlestick)",
         xaxis_title='Date', 
         yaxis_title='Price ($)',
         xaxis_rangeslider_visible=True,
@@ -127,22 +109,26 @@ if option == ticker + "'s Summary":
             ]
         )
     )
-    st.plotly_chart(fig_closing, use_container_width=True)
+    st.plotly_chart(fig_candlestick, use_container_width=True)
 
     st.stop()  # Stop further execution if in General Summary mode
 
 
+# --- TECHNICAL ANALYSIS ---
 
 if option == "Technical Analysis":
     st.header("Technical Indicators")
 
-    st.write(f"Technical analysis for **{ticker}** from **{start_date}** to **{end_date}**.")
+    selected_ticker = st.selectbox("Select asset to inspect:", options=tickers, key="tech_select")
+
+    prices = df['Close', selected_ticker]
+    tech_data = logic.calculate_technical_indicators(prices)
 
     # Drawdown plot
     fig_drawdown = go.Figure()
     fig_drawdown.add_trace(go.Scatter(
         x=df.index, 
-        y=df['Drawdown'], 
+        y=tech_data['Drawdown'], 
         mode='lines',
         name='Drawdown',
         line=dict(color='red', width=2),
@@ -156,113 +142,128 @@ if option == "Technical Analysis":
     st.plotly_chart(fig_drawdown, use_container_width=True)
 
     # SMA 50 and 200 plot
-    fig_MA = go.Figure()
-    fig_MA.add_trace(go.Scatter(
+    fig_sma = go.Figure()
+    fig_sma.add_trace(go.Scatter(
         x=df.index, 
-        y=df['Close', ticker], 
+        y=prices, 
         mode='lines',
         name='Close Price',
         line=dict(color='red', width=1),
         opacity=0.5
     ))
-    fig_MA.add_trace(go.Scatter(
+    fig_sma.add_trace(go.Scatter(
         x=df.index, 
-        y=df['SMA_50'], 
+        y=tech_data['SMA_50'], 
         mode='lines',
         name='SMA 50',
         line=dict(color='orange', width=2)
     ))
-    fig_MA.add_trace(go.Scatter(
+    fig_sma.add_trace(go.Scatter(
         x=df.index, 
-        y=df['SMA_200'], 
+        y=tech_data['SMA_200'], 
         mode='lines',
         name='SMA 200',
         line=dict(color='green', width=2)
     ))
-    fig_MA.update_layout(
+    fig_sma.update_layout(
         title='Price vs Moving Averages',
         xaxis_title='Date',
         yaxis_title='Price ($)'
     )
-    st.plotly_chart(fig_MA, use_container_width=True)
+    st.plotly_chart(fig_sma, use_container_width=True)
 
     st.stop()
 
 
+# --- RISK & STATISTICS ---
 
 if option == "Risk & Statistics":
     st.header("Risk & Statistical Analysis")
-
-    st.write(f"Risk and statistical analysis for **{ticker}** from **{start_date}** to **{end_date}**.")
+        
+    selected_ticker = st.selectbox("Select asset to inspect:", options=tickers, key="risk_select")
     
-    # histogram of log returns with normal distribution overlay
-    mu, std = norm.fit(df['log_return'])
-    x = np.linspace(df['log_return'].min(), df['log_return'].max(), 100)
-    y = norm.pdf(x, mu, std)
+    # Get S&P 500 data and calculate risk
+    df_spy = logic.get_benchmark_data(start_date, end_date)
+    risk_data = logic.calculate_risk_stats(df['log_return', selected_ticker], df_spy['log_return'])
 
-    fig_hist = go.Figure()
-    fig_hist.add_trace(go.Histogram(
-        x=df['log_return'],
-        histnorm='probability density',
-        name='Log Returns',
-        marker_color='blue',
-        opacity=0.7
-    ))
-    fig_hist.add_trace(go.Scatter(
-        x=x,
-        y=y,
-        mode='lines',
-        name='Normal Distribution Fit',
-        line=dict(color='red', width=2)
-    ))
-    fig_hist.update_layout(
-        title='Histogram of Log Returns with Normal Distribution Fit',
-        xaxis_title='Log Return',
-        yaxis_title='Density'
-    )
-    st.plotly_chart(fig_hist, use_container_width=True)
+    if risk_data:
+        # Metrics
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Alpha", f"{risk_data['alpha']:.4f}")
+        c2.metric("Beta", f"{risk_data['beta']:.4f}")
+        c3.metric("VaR (95%)", f"{risk_data['var_95']:.2%}")
 
+        # Regression
+        comb = risk_data['combined_df']
 
-    # scatter plot of returns with regression line
-    col1, col2 = st.columns(2)
-    col1.metric("Alpha", f"{df['alpha_anualized'].iloc[-1]:.4f}")
-    col2.metric("Beta", f"{df['beta'].iloc[-1]:.4f}")
+        fig_linreg = go.Figure()
+        fig_linreg.add_trace(go.Scatter(
+            x=comb['benchmark'], 
+            y=comb['asset'], 
+            mode='markers',
+            name='Data Points',
+            opacity=0.5
+        ))
 
-    fig_linreg = go.Figure()
-    fig_linreg.add_trace(go.Scatter(
-        x=df['log_return_sp500'], 
-        y=df['log_return'], 
-        mode='markers',
-        name='Data Points',
-        marker=dict(opacity=0.5)
-    ))
-    # regression line
-    x = np.linspace(df['log_return_sp500'].min(), df['log_return_sp500'].max(), 100)
-    y = df['beta'].iloc[-1] * x + df['alpha_anualized'].iloc[-1] / 252
+        # regression line
+        x_line = np.linspace(comb['benchmark'].min(), comb['benchmark'].max(), 100)
+        y_line = risk_data['beta'] * x_line + (risk_data['alpha']/252)
+        fig_linreg.add_trace(go.Scatter(
+            x=x_line, 
+            y=y_line,
+            mode='lines', 
+            line=dict(color='red'), 
+            name='Regression'
+        ))
 
-    fig_linreg.add_trace(go.Scatter(
-        x=x,
-        y=y,
-        mode='lines',
-        name='Regression Line',
-        line=dict(color='red', width=2)
-    ))
-    fig_linreg.update_layout(
-        title='Scatter Plot of Returns with Regression Line',
-        xaxis_title='S&P 500 Log Return',
-        yaxis_title=ticker + ' Log Return'
-    )
-    fig_linreg.add_annotation(
-        xref="paper", yref="paper",
-        x=0.05, y=0.95,
-        text=f"<b>Alpha:</b> {df['alpha_anualized'].iloc[-1]:.4f}<br><b>Beta:</b> {df['beta'].iloc[-1]:.4f}",
-        showarrow=False,
-        bgcolor="rgba(255, 255, 255, 0.8)",
-        bordercolor="black",
-        borderwidth=1,
-        font=dict(size=15, color="black")
-    )
-    st.plotly_chart(fig_linreg, use_container_width=True)
+        fig_linreg.update_layout(
+            title='Scatter Plot of Returns with Regression Line',
+            xaxis_title='S&P 500 Log Return',
+            yaxis_title=selected_ticker + ' Log Return'
+        )
+        st.plotly_chart(fig_linreg, use_container_width=True)
+
+        st.markdown("---")
+        
+        # Histogram
+        st.subheader("Distribution Analysis (Reality vs. Theory)")
+        
+        mu = risk_data['mu']
+        std = risk_data['std']
+        asset_returns = risk_data['combined_df']['asset'] 
+
+        fig_hist = go.Figure()
+        fig_hist.add_trace(go.Histogram(
+            x=asset_returns,
+            histnorm='probability density',
+            name='Actual Returns',
+            marker_color='blue',
+            opacity=0.7
+        ))
+
+        # normal distribution plot
+        x_range = np.linspace(asset_returns.min(), asset_returns.max(), 100)
+        y_pdf = norm.pdf(x_range, mu, std)
+
+        fig_hist.add_trace(go.Scatter(
+            x=x_range,
+            y=y_pdf,
+            mode='lines',
+            name='Normal Assumption',
+            line=dict(color='red', width=2, dash='dash')
+        ))
+
+        fig_hist.update_layout(
+            title=f"Return Distribution: {selected_ticker}",
+            xaxis_title="Log Returns",
+            yaxis_title="Density",
+            bargap=0.1
+        )
+        
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+    else:
+        st.error("Error performing risk analysis.")
 
     st.stop()
 
