@@ -5,6 +5,14 @@ import plotly.graph_objects as go
 from scipy.stats import norm
 import logic
 
+COLOR_PALETTE = {
+    "primary": "#2563EB", 
+    "secondary": "#38BDF8",  
+    "accent": "#818CF8",    
+    "dark": "#167D6A",    
+    "danger": "#F87171",    
+    "success": "#34D399"
+}
 
 st.set_page_config(layout="wide", page_title="Financial Dashboard")
 
@@ -131,7 +139,7 @@ if option == "Technical Analysis":
         y=tech_data['Drawdown'], 
         mode='lines',
         name='Drawdown',
-        line=dict(color='red', width=2),
+        line=dict(color=COLOR_PALETTE["danger"], width=2),
         fill='tozeroy'
     ))
     fig_drawdown.update_layout(
@@ -148,7 +156,7 @@ if option == "Technical Analysis":
         y=prices, 
         mode='lines',
         name='Close Price',
-        line=dict(color='red', width=1),
+        line=dict(color=COLOR_PALETTE["secondary"], width=1),
         opacity=0.5
     ))
     fig_sma.add_trace(go.Scatter(
@@ -156,14 +164,14 @@ if option == "Technical Analysis":
         y=tech_data['SMA_50'], 
         mode='lines',
         name='SMA 50',
-        line=dict(color='orange', width=2)
+        line=dict(color=COLOR_PALETTE["primary"], width=2)
     ))
     fig_sma.add_trace(go.Scatter(
         x=df.index, 
         y=tech_data['SMA_200'], 
         mode='lines',
         name='SMA 200',
-        line=dict(color='green', width=2)
+        line=dict(color=COLOR_PALETTE["accent"], width=2)
     ))
     fig_sma.update_layout(
         title='Price vs Moving Averages',
@@ -211,9 +219,9 @@ if option == "Risk & Statistics":
         fig_linreg.add_trace(go.Scatter(
             x=x_line, 
             y=y_line,
-            mode='lines', 
-            line=dict(color='red'), 
-            name='Regression'
+            mode='lines',  
+            name='Regression',
+            marker=dict(color=COLOR_PALETTE["danger"])
         ))
 
         fig_linreg.update_layout(
@@ -237,7 +245,7 @@ if option == "Risk & Statistics":
             x=asset_returns,
             histnorm='probability density',
             name='Actual Returns',
-            marker_color='blue',
+            marker_color=COLOR_PALETTE["primary"],
             opacity=0.7
         ))
 
@@ -250,7 +258,7 @@ if option == "Risk & Statistics":
             y=y_pdf,
             mode='lines',
             name='Normal Assumption',
-            line=dict(color='red', width=2, dash='dash')
+            line=dict(color=COLOR_PALETTE["danger"], width=2, dash='dash')
         ))
 
         fig_hist.update_layout(
