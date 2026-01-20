@@ -6,10 +6,10 @@ from scipy.stats import norm
 import logic
 
 COLOR_PALETTE = {
-    "primary": "#2563EB", 
-    "secondary": "#38BDF8",  
-    "accent": "#818CF8",    
-    "dark": "#167D6A",    
+    "primary": "#3B82F6", 
+    "secondary": "#22D3EE",  
+    "accent": "#A487F9",    
+    "dark": "#94A3B8",    
     "danger": "#F87171",    
     "success": "#34D399"
 }
@@ -309,27 +309,28 @@ if option == "Risk & Statistics":
         st.plotly_chart(fig_hist, use_container_width=True)
 
 
-        # heatmap for correlation matrix
-        corr_matrix = logic.calculate_correlation(df)
-        fig_heatmap = go.Figure()
-        fig_heatmap.add_trace(go.Heatmap(
-            z=corr_matrix, 
-            x=corr_matrix.columns, 
-            y=corr_matrix.index,
-            texttemplate="%{z:.2f}",
-            colorscale=[
-                [0.0, COLOR_PALETTE["danger"]],
-                [0.5, "white"],                 
-                [1.0, COLOR_PALETTE["primary"]]
-            ],
-            zmin=-1, 
-            zmax=1
-        ))
-        fig_heatmap.update_layout(
-            title='Correlation Matrix Heatmap',
-            height=600 
-        )
-        st.plotly_chart(fig_heatmap, use_container_width=True)
+        # heatmap for correlation matrix, just if more than one ticker
+        if (len(tickers) > 1): 
+            corr_matrix = logic.calculate_correlation(df)
+            fig_heatmap = go.Figure()
+            fig_heatmap.add_trace(go.Heatmap(
+                z=corr_matrix, 
+                x=corr_matrix.columns, 
+                y=corr_matrix.index,
+                texttemplate="%{z:.2f}",
+                colorscale=[
+                    [0.0, COLOR_PALETTE["danger"]],
+                    [0.5, "white"],                 
+                    [1.0, COLOR_PALETTE["primary"]]
+                ],
+                zmin=-1, 
+                zmax=1
+            ))
+            fig_heatmap.update_layout(
+                title='Correlation Matrix Heatmap',
+                height=600 
+            )
+            st.plotly_chart(fig_heatmap, use_container_width=True)
 
 
     else:
@@ -364,12 +365,13 @@ if option == "AI Forecasting":
                 y=prices,
                 mode='lines', 
                 name='Historical Data',
-                line=dict(width=1), opacity=0.5
+                line=dict(width=2), opacity=0.5
             ))
             
             # just add the future data 
             future_data = forecast[forecast['ds'] > prices.index[-1]]
             
+            # prediction line
             fig_ai.add_trace(go.Scatter(
                 x=future_data['ds'], 
                 y=future_data['yhat'],
@@ -377,14 +379,15 @@ if option == "AI Forecasting":
                 name='AI Prediction',
                 line=dict(color=COLOR_PALETTE['primary'], width=2)
             ))
-            
+
             # confidence area
             fig_ai.add_trace(go.Scatter(
                 x=pd.concat([future_data['ds'], future_data['ds'][::-1]]),
                 y=pd.concat([future_data['yhat_upper'], future_data['yhat_lower'][::-1]]),
                 fill='toself',
-                fillcolor='rgba(37, 99, 235, 0.2)', 
-                line=dict(color='rgba(255,255,255,0)'), 
+                fillcolor=COLOR_PALETTE['dark'], 
+                opacity=0.3,
+                line=dict(color='rgba(255,255,255,0)'),  # invisible line
                 name='Confidence Interval'
             ))
 
