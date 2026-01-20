@@ -23,7 +23,7 @@ st.title("Financial Data Analysis Dashboard")
 
 # ask user for ticker symbol, start date, end date
 
-posible_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'SPY', 'META', 'NVDA']
+posible_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'SPY', 'META', 'NVDA', 'BTC-USD']
 tickers = st.sidebar.multiselect("Select Tickers", options=posible_tickers, default=["AAPL"])
 start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
 end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2025-12-31"))
@@ -102,23 +102,29 @@ if option == "General Summary":
         decreasing_line_color=COLOR_PALETTE["danger"]
     ))
 
-    # calculate busy days between start and end date
-    dt_all = pd.bdate_range(start=df.index[0], end=df.index[-1])
-    dt_obs = df.index
-    dt_breaks = dt_all.difference(dt_obs)
+    # calculate busy days between start and end date (only if not crypto)
+    is_crypto = df.index.dayofweek.isin([5, 6]).any()
 
-    fig_candlestick.update_layout(
+    layout_args = dict(
         title=f"{selected_ticker} Daily Prices (Candlestick)",
         xaxis_title='Date', 
         yaxis_title='Price ($)',
-        xaxis_rangeslider_visible=True,
-        xaxis=dict(
+        xaxis_rangeslider_visible=True
+    )
+
+    if not is_crypto:
+        dt_all = pd.bdate_range(start=df.index[0], end=df.index[-1])
+        dt_obs = df.index
+        dt_breaks = dt_all.difference(dt_obs)
+
+        layout_args["xaxis"] = dict(
             rangebreaks=[
-                dict(bounds=["sat", "mon"]),  # hide weekends
-                dict(values=dt_breaks)  # hide holidays and missing days
+                dict(bounds=["sat", "mon"]), # hide weekends
+                dict(values=dt_breaks)       # hide holidays
             ]
         )
-    )
+
+    fig_candlestick.update_layout(**layout_args)
     st.plotly_chart(fig_candlestick, use_container_width=True)
 
     st.stop()  # Stop further execution if in General Summary mode
@@ -217,6 +223,58 @@ if option == "Technical Analysis":
         * **Golden Cross (Triangle Up 🟢):** The short-term average (50 days) crosses *above* the long-term average (200 days). Usually indicates the start of a **Bull Market**.
         * **Death Cross (Triangle Down 🔴):** The short-term average crosses *below* the long-term average. Usually indicates the start of a **Bear Market**.
         """)
+
+
+    # backtesting
+    st.markdown("---")
+    st.subheader("Backtesting: Strategy vs. Buy & Hold")
+
+    initial_capital = 10000
+    
+    portfolio_value = logic.run_backtest(prices, signals_df['Signal'], initial_capital)
+    
+    # calculate Benchmark (Buy & Hold)
+    # (price today / initial price) * initial capital
+    # we use the same dates as the portfolio has
+    buy_and_hold_value = (prices[portfolio_value.index] / prices[portfolio_value.index][0]) * initial_capital
+
+    # calculate returns
+    strat_return = (portfolio_value.iloc[-1] - initial_capital) / initial_capital
+    bh_return = (buy_and_hold_value.iloc[-1] - initial_capital) / initial_capital
+
+    # show metrics
+    c1, c2 = st.columns(2)
+    c1.metric("Strategy Return", f"{strat_return:.2%}", delta=f"${portfolio_value.iloc[-1] - initial_capital:.0f}")
+    c2.metric("Buy & Hold Return", f"{bh_return:.2%}", delta=f"${buy_and_hold_value.iloc[-1] - initial_capital:.0f}")
+
+    # evolution graph
+    fig_backtest = go.Figure()
+
+    # my strategy
+    fig_backtest.add_trace(go.Scatter(
+        x=portfolio_value.index, 
+        y=portfolio_value, 
+        mode='lines', 
+        name='My Strategy (SMA Cross)',
+        line=dict(color=COLOR_PALETTE['success'], width=2)
+    ))
+
+    # Buy & Hold 
+    fig_backtest.add_trace(go.Scatter(
+        x=buy_and_hold_value.index, 
+        y=buy_and_hold_value, 
+        mode='lines', 
+        name='Buy & Hold (Benchmark)',
+        line=dict(color=COLOR_PALETTE['dark'], width=2, dash='dash')
+    ))
+
+    fig_backtest.update_layout(
+        title=f"Portfolio Value Over Time (Start: ${initial_capital})",
+        xaxis_title="Date",
+        yaxis_title="Portfolio Value ($)"
+    )
+    
+    st.plotly_chart(fig_backtest, use_container_width=True)
 
     st.stop()
 

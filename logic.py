@@ -159,3 +159,47 @@ def predict_forecast(prices: pd.Series, n_days: int) -> pd.DataFrame:
     prediction = model.predict(future)
 
     return prediction[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+
+
+def run_backtest(prices: pd.Series, signals: pd.Series, initial_capital: float = 10000.0):
+    """
+    Simulates a trading strategy.
+    Param:
+        - prices: Series with the daily closing prices.
+        - signals: Series with 1 (buy), -1 (sell), 0 (do nothing).
+        - initial_capital
+    Return:
+        - Series with the total value of the portfolio daily.
+    """
+    
+    # inicial state
+    cash = initial_capital
+    shares = 0
+    portfolio_history = []  # for the daily total value
+    
+    # in case signals and prices start in different days
+    aligned_data = pd.DataFrame({'price': prices, 'signal': signals}).dropna()
+
+    # daily loop
+    for date, row in aligned_data.iterrows():
+        price = row['price']
+        signal = row['signal']
+        
+        # buy signal and we have no shares
+        # we assume we buy everything we can with the cash available
+        if signal == 1 and shares == 0:
+            shares_to_buy = cash / price
+            cash -= shares_to_buy * price
+            shares += shares_to_buy
+
+        # sell signal and we have shares to sell
+        elif signal == -1 and shares > 0:
+            cash += shares * price
+            shares = 0
+        
+        # total value today
+        total_value = cash + (shares * price)
+        portfolio_history.append(total_value)
+    
+    # turn list to Series with correct dates
+    return pd.Series(portfolio_history, index=aligned_data.index)
