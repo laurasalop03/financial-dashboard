@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import norm, linregress
 import streamlit as st
+from prophet import Prophet
 
 @st.cache_data
 def get_data(tickers: list, start: str, end: str) -> pd.DataFrame:
@@ -139,3 +140,22 @@ def calculate_correlation(df: pd.DataFrame):
     Calculates de correlation matrix for the assets we have.
     """
     return df['log_return'].corr()
+
+
+def predict_forecast(prices: pd.Series, n_days: int) -> pd.DataFrame:
+    """
+    Predicts the next n_days using the information of prices.
+    """
+    # adapt pd.Series to prophet's format
+    df = prices.reset_index()
+    df.columns = ['ds', 'y']
+
+    # train model
+    model = Prophet()
+    model.fit(df)
+
+    future = model.make_future_dataframe(periods=n_days)
+
+    prediction = model.predict(future)
+
+    return prediction[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]

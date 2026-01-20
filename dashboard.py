@@ -30,7 +30,7 @@ end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2025-12-31"))
 
 
 st.sidebar.markdown("---") 
-option = st.sidebar.radio("Navegation", ["General Summary", "Technical Analysis", "Risk & Statistics"])
+option = st.sidebar.radio("Navegation", ["General Summary", "Technical Analysis", "Risk & Statistics", "AI Forecasting"])
 
 
 # Validation
@@ -337,3 +337,66 @@ if option == "Risk & Statistics":
 
     st.stop()
 
+
+# --- AI FORECASTING ---
+
+if option == "AI Forecasting":
+    st.header("AI Price Prediction (Prophet)")
+
+    # ask user for ticker and number of days for prediction
+    selected_ticker = st.selectbox("Select asset to predict:", tickers, key="ai_select")
+    n_days = st.slider("Days to predict:", min_value=30, max_value=365, value=90)
+
+    # button so that it doesn't calculate all the time
+    if st.button("Generate Prediction"):
+        
+        # visual feedback while it thinks
+        with st.spinner(f"Training AI model for {selected_ticker}..."):
+            
+            prices = df['Close', selected_ticker]
+            forecast = logic.predict_forecast(prices, n_days)
+            
+            # plot
+            fig_ai = go.Figure()
+            
+            fig_ai.add_trace(go.Scatter(
+                x=prices.index, 
+                y=prices,
+                mode='lines', 
+                name='Historical Data',
+                line=dict(width=1), opacity=0.5
+            ))
+            
+            # just add the future data 
+            future_data = forecast[forecast['ds'] > prices.index[-1]]
+            
+            fig_ai.add_trace(go.Scatter(
+                x=future_data['ds'], 
+                y=future_data['yhat'],
+                mode='lines', 
+                name='AI Prediction',
+                line=dict(color=COLOR_PALETTE['primary'], width=2)
+            ))
+            
+            # confidence area
+            fig_ai.add_trace(go.Scatter(
+                x=pd.concat([future_data['ds'], future_data['ds'][::-1]]),
+                y=pd.concat([future_data['yhat_upper'], future_data['yhat_lower'][::-1]]),
+                fill='toself',
+                fillcolor='rgba(37, 99, 235, 0.2)', 
+                line=dict(color='rgba(255,255,255,0)'), 
+                name='Confidence Interval'
+            ))
+
+            fig_ai.update_layout(
+                title=f"AI Price Forecast: {selected_ticker} (+{n_days} days)",
+                xaxis_title="Date", yaxis_title="Price",
+                hovermode="x unified"
+            )
+            
+            st.plotly_chart(fig_ai, use_container_width=True)
+            
+            st.info("Note: The shaded area represents the uncertainty. The wider the area, the less sure the AI is about the price.")
+
+
+    st.stop()
