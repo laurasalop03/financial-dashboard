@@ -132,13 +132,14 @@ if option == "Technical Analysis":
     selected_ticker = st.selectbox("Select asset to inspect:", options=tickers, key="tech_select")
 
     prices = df['Close', selected_ticker]
-    tech_data = logic.calculate_technical_indicators(prices)
-
+    
     # Drawdown plot
+    drawdown = logic.calculate_drawdown(prices)
+
     fig_drawdown = go.Figure()
     fig_drawdown.add_trace(go.Scatter(
         x=df.index, 
-        y=tech_data['Drawdown'], 
+        y=drawdown, 
         mode='lines',
         name='Drawdown',
         line=dict(color=COLOR_PALETTE["danger"], width=2),
@@ -151,36 +152,71 @@ if option == "Technical Analysis":
     )
     st.plotly_chart(fig_drawdown, use_container_width=True)
 
-    # SMA 50 and 200 plot
+
+    # SMA 50 and 200 plot with buy and sell signals
+    signals_df, current_state = logic.calculate_trading_signals(prices)
+    
+    # delete the first 200 days without sma_200 so that the plot doesn't have gaps
+    signals_plot = signals_df.dropna()
+
+    st.metric(label="**Current Trend Strategy (SMA 50/200)**", value=current_state)
+
     fig_sma = go.Figure()
     fig_sma.add_trace(go.Scatter(
-        x=df.index, 
-        y=prices, 
+        x=signals_plot.index, 
+        y=signals_plot['price'], 
         mode='lines',
         name='Close Price',
         line=dict(color=COLOR_PALETTE["secondary"], width=1),
         opacity=0.5
     ))
     fig_sma.add_trace(go.Scatter(
-        x=df.index, 
-        y=tech_data['SMA_50'], 
+        x=signals_plot.index, 
+        y=signals_plot['SMA_50'], 
         mode='lines',
         name='SMA 50',
         line=dict(color=COLOR_PALETTE["primary"], width=2)
     ))
     fig_sma.add_trace(go.Scatter(
-        x=df.index, 
-        y=tech_data['SMA_200'], 
+        x=signals_plot.index, 
+        y=signals_plot['SMA_200'], 
         mode='lines',
         name='SMA 200',
         line=dict(color=COLOR_PALETTE["accent"], width=2)
     ))
+
+    # buy signals
+    buy_signals = signals_plot[signals_plot['Signal'] == 1]
+    fig_sma.add_trace(go.Scatter(
+        x=buy_signals.index,
+        y=buy_signals['SMA_50'],
+        mode='markers',
+        marker=dict(symbol='triangle-up', color=COLOR_PALETTE['success'], size=12),
+        name='Buy Signal'
+    ))
+    # sell signals
+    sell_signals = signals_plot[signals_plot['Signal'] == -1]
+    fig_sma.add_trace(go.Scatter(
+        x=sell_signals.index, 
+        y=sell_signals['SMA_50'], 
+        mode='markers', 
+        marker=dict(symbol='triangle-down', color=COLOR_PALETTE['danger'], size=12),
+        name='Sell Signal'
+    ))
+
     fig_sma.update_layout(
-        title='Price vs Moving Averages',
+        title=f"Trading Signals: Golden Cross / Death Cross ({selected_ticker})",
         xaxis_title='Date',
         yaxis_title='Price ($)'
     )
     st.plotly_chart(fig_sma, use_container_width=True)
+
+    # explanation for the user
+    with st.expander("ℹ️ How to read this chart?"):
+        st.write("""
+        * **Golden Cross (Triangle Up 🟢):** The short-term average (50 days) crosses *above* the long-term average (200 days). Usually indicates the start of a **Bull Market**.
+        * **Death Cross (Triangle Down 🔴):** The short-term average crosses *below* the long-term average. Usually indicates the start of a **Bear Market**.
+        """)
 
     st.stop()
 

@@ -57,24 +57,49 @@ def calculate_metrics(df: pd.DataFrame, ticker: str) -> dict:
     }
 
 
-def calculate_technical_indicators(series_price: pd.Series) -> pd.DataFrame:
+def calculate_drawdown(series_price: pd.Series) -> pd.Series:
     """
-    Calculates, given a series of prices, Drawdown and Moving Averages.
+    Calculates, given a series of prices, the Drawdown.
     """
-    # Drawdown
     rolling_max = series_price.cummax()
     drawdown = (series_price - rolling_max) / rolling_max
     
+    return drawdown
+
+
+def calculate_trading_signals(series_price: pd.Series):
+    """
+    Calculates Moving Averages and detects signals of Golden Cross and Death Cross.
+    Returns a DataFrame with the signals and the actual position.
+    """
+
     # SMAs
     sma_50 = series_price.rolling(window=50).mean()
     sma_200 = series_price.rolling(window=200).mean()
     
-    tech_df = pd.DataFrame({
-        'Drawdown': drawdown,
-        'SMA_50': sma_50,
-        'SMA_200': sma_200
-    })
-    return tech_df
+    # create signals df
+    signals = pd.DataFrame(index=series_price.index)
+    signals['price'] = series_price
+    signals['SMA_50'] = sma_50
+    signals['SMA_200'] = sma_200
+    signals['Signal'] = 0   # 0: do nothing, 1: buy, -1: sell
+
+    # detect crosses
+    sma_50_prev = sma_50.shift(1)
+    sma_200_prev = sma_200.shift(1)
+
+    # buy signal (today sma50 > sma200 and yesterdar sma50 < sma200)
+    buy_condition = (sma_50 > sma_200) & (sma_50_prev < sma_200_prev)
+    signals.loc[buy_condition, 'Signal'] = 1
+
+    # sell signal (today sma50 < sma200 and yesterdar sma50 > sma200)
+    sell_condition = (sma_50 < sma_200) & (sma_50_prev > sma_200_prev)
+    signals.loc[sell_condition, 'Signal'] = -1
+
+    # current state
+    curr_state = "BULLISH 🟢" if sma_50.iloc[-1] > sma_200.iloc[-1] else "BEARISH 🔴"
+
+    return signals, curr_state
 
 
 def calculate_risk_stats(asset_returns: pd.Series, benchmark_returns: pd.Series):
