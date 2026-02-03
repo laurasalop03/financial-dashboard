@@ -203,3 +203,29 @@ def run_backtest(prices: pd.Series, signals: pd.Series, initial_capital: float =
     
     # turn list to Series with correct dates
     return pd.Series(portfolio_history, index=aligned_data.index)
+
+
+def simulate_monte_carlo(prices: pd.Series, days_to_project: int, n_simulations: int):
+    """
+    Simulates n_simulations possible futures using the Geometric Brownian motion.
+    """
+
+    log_returns = np.log(prices / prices.shift(1)).dropna()
+
+    mu = log_returns.mean()
+    sigma = log_returns.std()
+    drift = mu - (0.5 * sigma**2)
+
+    # matrix with random numbers
+    Z = np.random.normal(0, 1, (days_to_project, n_simulations))
+    
+    daily_returns = np.exp(drift + sigma * Z)
+
+    # we want first day to be actual price, so return = 1
+    daily_returns[0] = 1
+
+    # accumulative prices
+    last_price = prices.iloc[-1]
+    prices_path = last_price * np.cumprod(daily_returns, axis=0)
+
+    return prices_path

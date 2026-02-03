@@ -276,6 +276,87 @@ if option == "Technical Analysis":
     
     st.plotly_chart(fig_backtest, use_container_width=True)
 
+
+    # monte carlo simulation
+    st.markdown("---")
+    st.subheader("Monte Carlo Simulation (Future Risk)")
+
+    n_sim_days = st.slider("Days to simulate:", min_value=30, max_value=365, value=252, key="mc_slider")
+
+    simulations = logic.simulate_monte_carlo(prices, days_to_project=n_sim_days, n_simulations=1000)
+
+    # median each day
+    median_path = np.median(simulations, axis=1)
+
+    # graph simulations and conclusions
+    fig_mc = go.Figure()
+    for i in range(50):
+        fig_mc.add_trace(go.Scatter(
+            y=simulations[:, i],
+            mode='lines',
+            opacity=0.1, 
+            line=dict(color=COLOR_PALETTE['secondary'], width=1),
+            showlegend=False
+        ))
+        
+    fig_mc.add_trace(go.Scatter(
+        x = list(range(n_sim_days)),
+        y = median_path,
+        name='Median Prediction (P50)',
+        line=dict(color=COLOR_PALETTE['primary'], width=3)
+    ))
+
+    fig_mc.update_layout(
+        title=f"Monte Carlo Simulation ({n_sim_days} days ahead)",
+        xaxis_title="Days into the future",
+        yaxis_title="Price ($)"
+    )
+    st.plotly_chart(fig_mc, use_container_width=True)
+
+    # percentiles and conclusions
+    final_prices = simulations[-1, :]
+    start_price = prices.iloc[-1]
+    p5 = np.percentile(final_prices, 5)
+    p50 = np.percentile(final_prices, 50)
+    p95 = np.percentile(final_prices, 95)
+
+    st.subheader("Probabilistic Analysis (VaR)")
+    col1, col2, col3 = st.columns(3)
+    
+    col1.metric("Bearish Case (P5)", f"${p5:.2f}", delta=f"{p5-start_price:.2f}")
+    col2.metric("Base Case (Median)", f"${p50:.2f}", delta=f"{p50-start_price:.2f}")
+    col3.metric("Bullish Case (P95)", f"${p95:.2f}", delta=f"{p95-start_price:.2f}")
+
+    # winning probability
+    st.markdown("---")
+    
+    prob_profit = (final_prices > start_price).mean()
+    
+    st.caption(f"Based on 1000 simulations, there is a **{prob_profit:.1%}** probability that the price will be higher than today in {n_sim_days} days.")
+
+    # histogram with the final prices
+    fig_hist = go.Figure()
+    fig_hist.add_trace(go.Histogram(
+        x=final_prices,
+        nbinsx=50,
+        name='Final Price Distribution',
+        marker_color=COLOR_PALETTE['secondary'],
+        opacity=0.7
+    ))
+
+    fig_hist.add_vline(x=start_price, line_width=3, line_dash="dash", line_color=COLOR_PALETTE['danger'], annotation_text="Start Price")
+    
+    fig_hist.add_vline(x=p50, line_width=3, line_color=COLOR_PALETTE['success'], annotation_text="Median Prediction")
+
+    fig_hist.update_layout(
+        title="Distribution of Ending Prices",
+        xaxis_title="Price ($)",
+        yaxis_title="Frequency (Number of Simulations)",
+        bargap=0.1
+    )
+    
+    st.plotly_chart(fig_hist, use_container_width=True)
+
     st.stop()
 
 
