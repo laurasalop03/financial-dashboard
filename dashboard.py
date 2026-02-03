@@ -21,12 +21,67 @@ st.title("Financial Data Analysis Dashboard")
 
 # --- SIDEBAR ---
 
-# ask user for ticker symbol, start date, end date
+st.sidebar.header("Data Selection")
 
-posible_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'SPY', 'META', 'NVDA', 'BTC-USD']
-tickers = st.sidebar.multiselect("Select Tickers", options=posible_tickers, default=["AAPL"])
+TICKER_NAMES = {
+    # US Tech
+    'AAPL': 'Apple Inc.',
+    'MSFT': 'Microsoft Corp.',
+    'GOOGL': 'Alphabet Inc.',
+    'AMZN': 'Amazon.com Inc.',
+    'TSLA': 'Tesla Inc.',
+    'NVDA': 'NVIDIA Corp.',
+    'META': 'Meta Platforms',
+    'NFLX': 'Netflix Inc.',
+    # Indices / ETFs
+    'SPY': 'S&P 500 ETF',
+    'QQQ': 'Nasdaq 100 ETF',
+    'GLD': 'Gold Trust',
+    'BTC-USD': 'Bitcoin',
+    'ETH-USD': 'Ethereum',
+    # Finance & Retail
+    'JPM': 'JPMorgan Chase',
+    'V': 'Visa Inc.',
+    'WMT': 'Walmart Inc.',
+    'KO': 'Coca-Cola Co.',
+    # Spanish
+    'SAN.MC': 'Banco Santander',
+    'BBVA.MC': 'BBVA',
+    'ITX.MC': 'Inditex',
+    'TEF.MC': 'Telefónica'
+}
+
+def format_func(option):
+    # if we have the ticker in our dict, show the name
+    return f"{option} - {TICKER_NAMES[option]}" if option in TICKER_NAMES else option
+
+# let the user select tickers
+dropdown_tickers = st.sidebar.multiselect(
+    "Select Popular Tickers", 
+    options=list(TICKER_NAMES.keys()), 
+    default=["SPY", "NVDA"],
+    format_func=format_func
+)
+
+# let the user input its own tickers
+st.sidebar.markdown("---")
+st.sidebar.write("Don't see your ticker? Add it manually:")
+custom_tickers_input = st.sidebar.text_input(
+    "Enter Tickers (comma separated)", 
+    placeholder="e.g. GME, AMC, EURUSD=X"
+).upper()
+
+# clean user input
+if custom_tickers_input:
+    custom_list = [t.strip() for t in custom_tickers_input.split(",")]
+else:
+    custom_list = []
+
+tickers = list(set(dropdown_tickers + custom_list))
+
+
 start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
-end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2025-12-31"))
+end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("today"))
 
 
 st.sidebar.markdown("---") 
@@ -552,6 +607,14 @@ if option == "AI Forecasting":
 
 if option == "Portfolio Optimization":
     st.header("Modern Portfolio Theory (Markowitz)")
+
+    # let user select the tickers desired
+    opt_tickers = st.multiselect(
+        "Select assets to include in the optimization:",
+        options=tickers,
+        default=tickers,
+        format_func=format_func
+    )
 
     # we need at least 2 stocks to optimize
     if len(tickers) < 2:
