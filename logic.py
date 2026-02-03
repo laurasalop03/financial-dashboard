@@ -229,3 +229,31 @@ def simulate_monte_carlo(prices: pd.Series, days_to_project: int, n_simulations:
     prices_path = last_price * np.cumprod(daily_returns, axis=0)
 
     return prices_path
+
+
+def simulate_portfolio_optimization (prices: pd.DataFrame, n_simulations: int = 5000):
+    '''
+    Simulates thousands of portfolio combinations to find the Efficient Frontier.
+    '''
+
+    n_stocks = len(prices.columns)
+    log_returns = np.log(prices / prices.shift(1)).dropna()
+
+    # covariance matrix annualized
+    cov_matrix = log_returns.cov() * 252
+
+    returns, volatilities, weights = [], [], []
+
+    for _ in range(n_simulations):
+        w = np.random.random(n_stocks)
+        w /= np.sum(w)
+
+        returns.append(np.sum(w * log_returns.mean()) * 252)
+        volatilities.append(np.sqrt(np.dot(w.T, np.dot(cov_matrix, w))))
+        weights.append(w)
+
+    return {
+        'returns': returns,
+        'volatility': volatilities,
+        'weights': weights
+    }

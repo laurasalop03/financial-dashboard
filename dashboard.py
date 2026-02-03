@@ -30,7 +30,7 @@ end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2025-12-31"))
 
 
 st.sidebar.markdown("---") 
-option = st.sidebar.radio("Navegation", ["General Summary", "Technical Analysis", "Risk & Statistics", "AI Forecasting"])
+option = st.sidebar.radio("Navegation", ["General Summary", "Technical Analysis", "Risk & Statistics", "AI Forecasting", "Portfolio Optimization"])
 
 
 # Validation
@@ -282,6 +282,10 @@ if option == "Technical Analysis":
     st.subheader("Monte Carlo Simulation (Future Risk)")
 
     n_sim_days = st.slider("Days to simulate:", min_value=30, max_value=365, value=252, key="mc_slider")
+
+    # button to re-run
+    if st.button("🔄 Run Simulation Again"):
+        st.rerun()
 
     simulations = logic.simulate_monte_carlo(prices, days_to_project=n_sim_days, n_simulations=1000)
 
@@ -540,5 +544,110 @@ if option == "AI Forecasting":
             
             st.info("Note: The shaded area represents the uncertainty. The wider the area, the less sure the AI is about the price.")
 
+
+    st.stop()
+
+
+# --- PORTFOLIO OPTIMIZATION ---
+
+if option == "Portfolio Optimization":
+    st.header("Modern Portfolio Theory (Markowitz)")
+
+    # we need at least 2 stocks to optimize
+    if len(tickers) < 2:
+        st.warning("⚠️ To optimize a portfolio, you need to select at least 2 tickers in the sidebar.")
+        st.stop()
+
+    st.write(f"Simulating {5000} different combinations for: **{', '.join(tickers)}**...")
+
+    # button to re-run
+    if st.button("🔄 Run Optimization Again"):
+        st.rerun()
+
+    prices_subset = df['Close'][tickers]
+    
+    with st.spinner("Running Monte Carlo Optimization..."):
+        results = logic.simulate_portfolio_optimization(prices_subset, n_simulations=5000)
+
+    returns = np.array(results['returns'])
+    volatility = np.array(results['volatility'])
+    weights = np.array(results['weights'])
+
+    sharpe_ratios = returns / volatility
+
+    # index of the portfolio with max sharp ratio
+    max_sharpe_idx = np.argmax(sharpe_ratios)
+    
+    best_return = returns[max_sharpe_idx]
+    best_volatility = volatility[max_sharpe_idx]
+    best_weights = weights[max_sharpe_idx]
+
+    # winning porfolio
+    st.subheader("Optimal Portfolio (Max Sharpe Ratio)")
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Expected Return", f"{best_return:.2%}")
+    c2.metric("Annual Volatility", f"{best_volatility:.2%}")
+    c3.metric("Sharpe Ratio", f"{sharpe_ratios[max_sharpe_idx]:.2f}")
+
+    # grahps
+    col_chart1, col_chart2 = st.columns([2, 1])
+
+    with col_chart1:
+        # efficient frontier
+        fig_eff = go.Figure()
+
+        fig_eff.add_trace(go.Scatter(
+            x=volatility, 
+            y=returns,
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=sharpe_ratios,
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Sharpe Ratio")
+            ),
+            name='Portfolios',
+            text=[f"Sharpe: {s:.2f}" for s in sharpe_ratios],
+            hoverinfo='text+x+y'
+        ))
+
+        # star in the best one
+        fig_eff.add_trace(go.Scatter(
+            x=[best_volatility],
+            y=[best_return],
+            mode='markers',
+            marker=dict(symbol='star', size=18, color=COLOR_PALETTE['danger'], line=dict(width=2, color='white')),
+            name='Max Sharpe Portfolio'
+        ))
+
+        fig_eff.update_layout(
+            title="Efficient Frontier",
+            xaxis_title="Risk (Volatility)",
+            yaxis_title="Return",
+            height=500
+        )
+        st.plotly_chart(fig_eff, use_container_width=True)
+
+    with col_chart2:
+        # pie chart with the best option
+        labels = []
+        values = []
+        for ticker, weight in zip(tickers, best_weights):
+            if weight > 0.01:
+                labels.append(ticker)
+                values.append(weight)
+
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=labels, 
+            values=values, 
+            hole=0.4,
+            textinfo='label+percent',
+            marker=dict(colors=[COLOR_PALETTE['primary'], COLOR_PALETTE['secondary'], COLOR_PALETTE['accent'], COLOR_PALETTE['success']])
+        )])
+        
+        fig_pie.update_layout(title="Optimal Allocation")
+        st.plotly_chart(fig_pie, use_container_width=True)
 
     st.stop()
