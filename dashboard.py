@@ -291,7 +291,8 @@ if option == "Technical Analysis":
     # calculate Benchmark (Buy & Hold)
     # (price today / initial price) * initial capital
     # we use the same dates as the portfolio has
-    buy_and_hold_value = (prices[portfolio_value.index] / prices[portfolio_value.index][0]) * initial_capital
+    bh_prices = prices.loc[portfolio_value.index]
+    buy_and_hold_value = (bh_prices / bh_prices.iloc[0]) * initial_capital
 
     # calculate returns
     strat_return = (portfolio_value.iloc[-1] - initial_capital) / initial_capital
